@@ -12,6 +12,8 @@ examples/*/*.jsonl
 examples/*/.sessions/
 # Cross-container DSH home (~/.dsh symlink target): profiles, sessions, credentials.
 .dsh/
+# Local deployment values (hostnames/paths) — see deploy/deploy.env.example.
+deploy/deploy.env
 coverage/
 .doc-typecheck-*/
 .node-next-types-*/
