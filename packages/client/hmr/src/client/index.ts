@@ -164,7 +164,7 @@ export function apply(ctx: Context): void {
   }
 
   ctx.effect(() => {
-    const source = new EventSource(EVENTS_ENDPOINT)
+    const source = new EventSource(EVENTS_ENDPOINT.replace(/^\//, ''))
     source.addEventListener('message', (event: MessageEvent<string>) => {
       let frame: PluginsEventFrame
       try {

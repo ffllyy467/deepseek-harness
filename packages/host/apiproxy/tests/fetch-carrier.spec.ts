@@ -788,7 +788,7 @@ describe('resolveBase', () => {
     await probe.sessions.list({})
     expect(probe.urls[0]).toMatch(/^http:\/\/dsh\.internal\//)
 
-    const globalWithLocation = globalThis as { location?: { origin?: string } }
+    const globalWithLocation = globalThis as { location?: { origin?: string; pathname?: string } }
     globalWithLocation.location = { origin: 'http://host.example' }
     try {
       const probe2 = new Probe()
@@ -798,6 +798,26 @@ describe('resolveBase', () => {
       const probe3 = new Probe()
       await probe3.sessions.list({})
       expect(probe3.urls[0]).toMatch(/^http:\/\/dsh\.internal\//)
+    } finally {
+      delete globalWithLocation.location
+    }
+
+    // Path-prefix proxy deployment: the document lives under a path, and
+    // request URLs resolve against the document directory (trailing slash kept
+    // or synthesized), never the bare origin.
+    globalWithLocation.location = { origin: 'http://host.example', pathname: '/proxy/3080/' }
+    try {
+      const probe4 = new Probe()
+      await probe4.sessions.list({})
+      expect(probe4.urls[0]).toBe('http://host.example/proxy/3080/api/session.list')
+    } finally {
+      delete globalWithLocation.location
+    }
+    globalWithLocation.location = { origin: 'http://host.example', pathname: '/proxy/3080' }
+    try {
+      const probe5 = new Probe()
+      await probe5.sessions.list({})
+      expect(probe5.urls[0]).toBe('http://host.example/proxy/3080/api/session.list')
     } finally {
       delete globalWithLocation.location
     }

@@ -181,6 +181,8 @@ async function directoryRow(
 export interface Config {
   /** Complete-result bound of one listing level; see {@link BrowseDirectoryPicker.Config}. */
   maxEntries: number
+  /** Starting listing path when a picker call omits one; defaults to the host user's home. */
+  defaultPath?: string
 }
 
 /** The `ctx.directoryPicker` browse implementation (stable capability object per service life). */
@@ -190,10 +192,15 @@ export default class BrowseDirectoryPicker extends DirectoryPicker {
    * materialize and put on the wire: at most this many child-directory rows
    * (hidden rows included), with `truncated` flagging a cut level. The
    * default follows GitHub's web UI, which truncates directory listings at
-   * 1,000 entries.
+   * 1,000 entries. `defaultPath` starts a caller's picker at a deployment
+   * root instead of the host user's home; a relative value fails the load.
    */
   static Config: z<Config> = z.object({
     maxEntries: z.natural().min(1).default(1000),
+    defaultPath: z.transform(z.string(), (path) => {
+      if (!fullyQualified(path)) throw new Error('defaultPath must be a fully qualified absolute path')
+      return path
+    }),
   })
 
   private readonly browseCapability: DirectoryPickerCapability = {
@@ -222,7 +229,7 @@ export default class BrowseDirectoryPicker extends DirectoryPicker {
     if (path !== undefined && !fullyQualified(path)) {
       throw new DirectoryPickerError('directory-unreadable', path, `cannot list "${path}": not a fully qualified path`)
     }
-    const target = resolve(path ?? home)
+    const target = resolve(path ?? this.config.defaultPath ?? home)
     // Stream the level (opendir, one dirent at a time) into a name-sorted
     // window of maxEntries + 1 candidates: memory stays bounded no matter how
     // many children the directory holds, the window keeps the name-sorted

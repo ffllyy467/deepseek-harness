@@ -10,7 +10,7 @@ import { RpcId } from '../src/client/api.ts'
 import { FixtureApiClient } from '../src/client/fixture.ts'
 import { WebApiClient } from '../src/client/web-api-client.ts'
 
-type Win = { location?: { hostname: string; search: string; origin?: string } }
+type Win = { location?: { hostname: string; search: string; origin?: string; pathname?: string } }
 type WebSocketGlobal = { WebSocket?: typeof WebSocket }
 
 const originalWebSocket = globalThis.WebSocket
@@ -359,6 +359,38 @@ describe('connection client apply', () => {
       ['/api', 'goals/create?unsafe'],
     ] as const) {
       await expect(handle.rpc.call(channel, endpoint, {})).rejects.toThrow('invalid RPC target')
+    }
+  })
+
+  it('resolves generic RPC URLs against a path-prefixed document base', async () => {
+    ;(globalThis as Win).location = {
+      hostname: 'host.example', search: '', origin: 'https://host.example', pathname: '/proxy/3080/',
+    }
+    const handle = await mount()
+    const original = globalThis.fetch
+    globalThis.fetch = vi.fn().mockResolvedValue(Response.json({
+      type: 'server-response',
+      rpcId: '00000000-0000-4000-8000-000000000000',
+      result: { ok: true, value: {} },
+    }))
+    try {
+      await handle.rpc.call('/api', 'goals/create', {}).catch(() => undefined)
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        new URL('https://host.example/proxy/3080/api/goals/create'),
+        expect.anything(),
+      )
+      // Without a trailing slash the pathname is still treated as a directory.
+      ;(globalThis as Win).location = {
+        hostname: 'host.example', search: '', origin: 'https://host.example', pathname: '/proxy/3080',
+      }
+      await handle.rpc.call('/api', 'goals/create', {}).catch(() => undefined)
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        new URL('https://host.example/proxy/3080/api/goals/create'),
+        expect.anything(),
+      )
+    } finally {
+      globalThis.fetch = original
+      delete (globalThis as Win).location
     }
   })
 

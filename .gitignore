@@ -10,6 +10,8 @@ examples/*/*.jsonl
 .storages/
 .sessions/
 examples/*/.sessions/
+# Cross-container DSH home (~/.dsh symlink target): profiles, sessions, credentials.
+.dsh/
 coverage/
 .doc-typecheck-*/
 .node-next-types-*/

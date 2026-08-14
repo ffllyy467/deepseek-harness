@@ -28,7 +28,7 @@ export function createWebConnectionRpc(): ClientConnectionRpc {
         payload,
       }
       const response = await globalThis.fetch(
-        new URL(`${channel}/${endpoint}`, resolveBase()),
+        new URL(`${channel}/${endpoint}`.replace(/^\//, ''), resolveBase()),
         {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -49,8 +49,12 @@ export function createWebConnectionRpc(): ClientConnectionRpc {
 }
 
 function resolveBase(): string {
-  const location = (globalThis as { location?: { origin?: string } }).location
-  return location?.origin !== undefined && location.origin !== 'null' ? location.origin : INTERNAL_BASE
+  // Request paths are built relative to this base (their leading `/` is
+  // stripped at the call site), so a path-prefix proxy's prefix survives; the
+  // pathname is kept as the document directory, not the document file.
+  const location = (globalThis as { location?: { origin?: string; pathname?: string } }).location
+  const origin = location?.origin !== undefined && location.origin !== 'null' ? location.origin : INTERNAL_BASE
+  return location?.pathname === undefined ? origin : `${origin}${location.pathname}${location.pathname.endsWith('/') ? '' : '/'}`
 }
 
 function assertTarget(channel: string, endpoint: string): void {

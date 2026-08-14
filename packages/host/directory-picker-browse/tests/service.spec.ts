@@ -166,6 +166,27 @@ describe('BrowseDirectoryPicker', () => {
     expect(listing.path).toBe(homedir())
   })
 
+  it('starts a caller\'s listing at the configured defaultPath instead of home', async () => {
+    const ctx = new Context()
+    const fiber = ctx.plugin(BrowseDirectoryPicker, { maxEntries: 1000, defaultPath: join(root, 'projects') })
+    await fiber.await()
+    const configured = ctx.get('directoryPicker')!.capability()
+    if (configured.kind !== 'browse') throw new Error('browse backend must advertise the browse capability')
+    try {
+      const listing = await configured.list()
+      expect(listing.path).toBe(join(root, 'projects'))
+      expect(listing.entries.map(entry => entry.name)).toEqual(['harness'])
+    } finally {
+      await fiber.dispose()
+    }
+  })
+
+  it('rejects a relative defaultPath at config time', async () => {
+    const ctx = new Context()
+    await expect(ctx.plugin(BrowseDirectoryPicker, { maxEntries: 1000, defaultPath: 'projects' }).await())
+      .rejects.toThrow(/fully qualified/)
+  })
+
   it('throws directory-unreadable for a missing target', async () => {
     const missing = join(root, 'no-such-dir')
     const failure = await capability.list(missing).catch((error: unknown) => error)

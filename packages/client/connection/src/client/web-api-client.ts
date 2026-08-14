@@ -37,7 +37,7 @@ export class WebApiClient extends AbstractApiClient {
     frameSchema: Parser<F>,
     onOpen?: () => void,
   ): AsyncGenerator<RpcRequest<F>> {
-    const url = new URL(path, this.resolveBase())
+    const url = new URL(path.replace(/^\//, ''), this.resolveBase())
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
     const socket = new WebSocket(url)
     const inbox: SocketItem<F>[] = []

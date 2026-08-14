@@ -61,6 +61,8 @@ export interface WebRuntimeValues {
   lanAddresses: string[]
   /** LAN literals followed by explicit invocation authorities. */
   trustedHosts: string[]
+  /** Explicit invocation authorities only (`--trusted-host`), never auto-derived LAN literals. */
+  explicitTrustedHosts: string[]
 }
 
 /** Environment variable naming the canonical local URL of this Web GUI. */
@@ -80,7 +82,7 @@ const ALL_INTERFACES_HOST = '0.0.0.0'
  * an OS-assigned port is unknowable before bind.
  * @param bindHost - the active webserver bind host.
  * @param extra - explicit `--trusted-host` values, in argument order.
- * @returns the LAN display addresses and invocation-derived fence authorities.
+ * @returns the LAN display addresses, the full fence authorities, and the explicit invocation authorities alone.
  */
 export function resolveLanTrust(bindHost: string, extra: readonly string[]): WebRuntimeValues {
   const lanAddresses = bindHost === ALL_INTERFACES_HOST
@@ -88,7 +90,7 @@ export function resolveLanTrust(bindHost: string, extra: readonly string[]): Web
       .filter((iface): iface is NonNullable<typeof iface> => iface !== undefined && iface.family === 'IPv4' && !iface.internal)
       .map(iface => iface.address)
     : []
-  return { lanAddresses, trustedHosts: [...lanAddresses, ...extra] }
+  return { lanAddresses, trustedHosts: [...lanAddresses, ...extra], explicitTrustedHosts: [...extra] }
 }
 
 /** Model-visible orientation and acceptance boundary for sessions created through `dsh web`. */

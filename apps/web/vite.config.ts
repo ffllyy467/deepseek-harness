@@ -90,6 +90,9 @@ function npmPackageOf(id: string): string | undefined {
 }
 
 export default defineConfig({
+  // Relative asset URLs: the built index.html must survive serving under a path
+  // prefix (port-forward / reverse proxy), where absolute `/assets/*` would 404.
+  base: './',
   plugins: [rejectStandaloneServe(), react()],
   build: {
     sourcemap: true,

@@ -8,7 +8,7 @@
  */
 
 import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -90,7 +90,7 @@ afterEach(async () => {
 /** Write a two-row cordis.yml (webserver + chooser), then boot it through the real Loader. */
 async function loadComposition(
   bindHost: '127.0.0.1' | '0.0.0.0',
-  options: { failSurface?: boolean } = {},
+  options: { failSurface?: boolean; chooserConfig?: { defaultPath?: string } } = {},
 ): Promise<{ ctx: Context; configPath: string }> {
   root = await mkdtemp(join(tmpdir(), 'dsh-directory-picker-auto-'))
   const configPath = join(root, 'cordis.yml')
@@ -100,6 +100,9 @@ async function loadComposition(
     `    host: '${bindHost}'`,
     '    port: 0',
     `- name: '${AUTO}'`,
+    ...(options.chooserConfig?.defaultPath === undefined
+      ? []
+      : ['  config:', `    defaultPath: '${options.chooserConfig.defaultPath}'`]),
     '',
   ].join('\n'))
 
@@ -203,6 +206,25 @@ describe('real Loader composition', () => {
     expect(entryNames(ctx)).not.toContain(NATIVE_SURFACE)
     const picker = ctx.get('directoryPicker') as DirectoryPicker
     expect(picker.capability().kind).toBe('browse')
+  })
+
+  it('forwards defaultPath to the mounted browse backend', { timeout: 60_000 }, async () => {
+    stubAttendedHost()
+    vi.stubEnv('SSH_CONNECTION', '10.0.0.2 55 10.0.0.9 22')
+    const start = await mkdtemp(join(tmpdir(), 'dsh-picker-start-'))
+    const startProjects = join(start, 'projects')
+    await mkdir(startProjects)
+    try {
+      const { ctx } = await loadComposition('127.0.0.1', { chooserConfig: { defaultPath: startProjects } })
+      const picker = ctx.get('directoryPicker') as DirectoryPicker
+      const capability = picker.capability()
+      expect(capability.kind).toBe('browse')
+      if (capability.kind !== 'browse') throw new Error('expected the browse capability')
+      const listing = await capability.list()
+      expect(listing.path).toBe(startProjects)
+    } finally {
+      await rm(start, { recursive: true, force: true })
+    }
   })
 
   it('mounts the browse backend for an all-interfaces bind even on an attended host', { timeout: 60_000 }, async () => {

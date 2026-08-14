@@ -150,7 +150,9 @@ function shortHash(input: string | Buffer): string {
 function graphRow(id: string, rev: string, injectEdges: string[] | undefined, immediately: boolean): WebBootEntry {
   return {
     id,
-    url: `/plugins/${id}/client.js?rev=${rev}`,
+    // Relative so the browser resolves the bundle against the page's serving
+    // path (root deployment or a path-prefix proxy alike).
+    url: `plugins/${id}/client.js?rev=${rev}`,
     rev,
     ...(injectEdges !== undefined ? { inject: injectEdges } : {}),
     ...(immediately ? { immediately: true } : {}),

@@ -74,7 +74,7 @@ function fakeResponse(): { response: ServerResponse; state: { status?: number; b
   return { response, state }
 }
 
-async function mounted(config?: { trustedHosts?: string[] }): Promise<{
+async function mounted(config?: { trustedHosts?: string[]; privilegedHosts?: string[] }): Promise<{
   routes: WebRoute[]
   upgrades: WebUpgradeRoute[]
   dispose: () => Promise<void>
@@ -161,14 +161,18 @@ describe('connection node half', () => {
     await dispose()
   })
 
-  it('pins privileged methods to loopback even for a declared trusted authority', async () => {
-    const { routes, dispose } = await mounted({ trustedHosts: ['harness.example'] })
-    // The privileged set: native dialogs plus the whole settings/credential
-    // configuration plane, reads included, plus the one method that makes the
-    // host fetch a caller-chosen URL. The same declared authority reaches
-    // ordinary reads (carrier-level 404 from the empty proxy proves the fence
-    // passed), but each privileged method stays loopback-only and 403s.
-    for (const method of [
+  it('admits only explicitly declared privilegedHosts to the privileged plane', async () => {
+    // trustedHosts alone (a 0.0.0.0 composition's fence) does NOT open the
+    // privileged plane: the same authority stays 403 until it is declared as
+    // privilegedHosts, which is how the CLI's --trusted-host front door passes.
+    const { routes, dispose } = await mounted({
+      // privilegedHosts is the explicit declaration subset of trustedHosts (the
+      // combined fence list): a front-door authority must pass the /api fence
+      // before the privileged plane is ever consulted.
+      trustedHosts: ['harness.example', 'front.example'],
+      privilegedHosts: ['front.example'],
+    })
+    const privileged = [
       'host.pickDirectory', 'host.openPath',
       'settings.describe', 'settings.openDocument', 'settings.update', 'settings.replace', 'settings.mutate',
       'credentials.describe', 'credentials.set', 'credentials.unset',
@@ -177,7 +181,9 @@ describe('connection node half', () => {
       // reconnaissance, and copy/remove/openDocument manage the roster and
       // drive the host desktop.
       'agentPreset.read', 'agentPreset.copy', 'agentPreset.openDocument', 'agentPreset.remove',
-    ]) {
+    ]
+    // A mere fence-trusted authority still 403s every privileged method.
+    for (const method of privileged) {
       const denied = fakeResponse()
       await routes[0]!.handler(
         fakeRequest({ host: 'harness.example' }, `${API_PATH}/${method}`),
@@ -186,9 +192,23 @@ describe('connection node half', () => {
       expect(denied.state.status).toBe(403)
       expect(denied.state.body).toBe('forbidden')
     }
-    const read = fakeResponse()
-    await routes[0]!.handler(fakeRequest({ host: 'harness.example' }), read.response)
-    expect(read.state.status).not.toBe(403)
+    // The declared front door passes each one through to the bridge (the empty
+    // proxy answers 404, proving the fence ran).
+    for (const method of privileged) {
+      const passed = fakeResponse()
+      await routes[0]!.handler(
+        fakeRequest({ host: 'front.example' }, `${API_PATH}/${method}`),
+        passed.response,
+      )
+      expect(passed.state.status).toBe(404)
+    }
+    // An undeclared host stays out of both planes.
+    const stranger = fakeResponse()
+    await routes[0]!.handler(
+      fakeRequest({ host: 'attacker.com' }, `${API_PATH}/settings.describe`),
+      stranger.response,
+    )
+    expect(stranger.state.status).toBe(403)
     await dispose()
   })
 

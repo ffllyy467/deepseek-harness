@@ -291,8 +291,12 @@ export abstract class AbstractApiClient implements IApiClient {
 
   /** Browser = same-origin (a fake authority would fail DNS on real requests); no-location env (Node) = fake authority. */
   protected resolveBase(): string {
-    const loc = (globalThis as { location?: { origin?: string } }).location
-    return loc?.origin !== undefined && loc.origin !== 'null' ? loc.origin : INTERNAL_BASE
+    const loc = (globalThis as { location?: { origin?: string; pathname?: string } }).location
+    const origin = loc?.origin !== undefined && loc.origin !== 'null' ? loc.origin : INTERNAL_BASE
+    // Under a path-prefix proxy (port-forward, Jupyter) the page lives at a
+    // path like /proxy/3080/; request paths are built relative to this base, so
+    // it carries the document pathname (normalized to a directory, ending in '/').
+    return loc?.pathname === undefined ? origin : `${origin}${loc.pathname}${loc.pathname.endsWith('/') ? '' : '/'}`
   }
 
   protected mintRpcId(): RpcId {
@@ -315,7 +319,7 @@ export abstract class AbstractApiClient implements IApiClient {
         ? AbortSignal.timeout(this.timeoutMs)
         : AbortSignal.any([AbortSignal.timeout(this.timeoutMs), signal])
       : signal
-    const response = await this.doFetch(new URL(path, this.resolveBase()), {
+    const response = await this.doFetch(new URL(path.replace(/^\//, ''), this.resolveBase()), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
@@ -372,7 +376,7 @@ export abstract class AbstractApiClient implements IApiClient {
     frameSchema: z.ZodType<F>,
     onOpen?: () => void,
   ): AsyncGenerator<RpcRequest<F>> {
-    const response = await this.doFetch(new URL(path, this.resolveBase()), { signal })
+    const response = await this.doFetch(new URL(path.replace(/^\//, ''), this.resolveBase()), { signal })
     if (!response.ok || response.body === null) throw new Error(`transport failure for ${path}: HTTP ${response.status}`)
     onOpen?.()
     const reader = response.body.getReader()
