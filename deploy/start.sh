@@ -51,18 +51,53 @@ start_server() {
   command -v curl >/dev/null 2>&1 || die "curl missing"
   mkdir -p "$(dirname "$LOG_FILE")"
   cd "$REPO_DIR"
+
+  # Remember where the log stood before this boot: only lines after this
+  # point belong to the attempt we are starting.
+  local log_start
+  log_start="$(wc -l < "$LOG_FILE" 2>/dev/null || echo 0)"
+
   say "starting dsh web in the background (log: $LOG_FILE)"
   nohup pnpm dsh web >> "$LOG_FILE" 2>&1 &
+  local wrapper_pid=$!
+
+  # Failure markers: a loader/boot failure exits the process (pnpm wraps it
+  # as [ELIFECYCLE] Command failed) or crashes V8 (FATAL ERROR).
+  local fatal_pattern='plugin tree failed to load|loader fibers failed|FATAL ERROR|Command failed'
   local i
   for i in $(seq 1 "$BOOT_WAIT_SECS"); do
     if curl -sf -o /dev/null "http://127.0.0.1:${WEB_PORT}/"; then
+      # The URL line prints on loader settlement; a failed boot can still
+      # serve briefly before the process exits, so confirm liveness and scan
+      # the boot's log segment before declaring success.
+      sleep 2
+      if ! pgrep -f 'apps/cli/src/bin.ts' >/dev/null 2>&1; then
+        echo "--- ${LOG_FILE} (boot log tail) ---" >&2
+        tail -n 30 "$LOG_FILE" >&2
+        die "dsh web exited right after serving — boot failed; see the log tail above"
+      fi
+      local fatal
+      fatal="$(tail -n +$((log_start + 1)) "$LOG_FILE" 2>/dev/null | grep -E "$fatal_pattern" | head -1 || true)"
+      if [ -n "$fatal" ]; then
+        echo "--- ${LOG_FILE} (boot log tail) ---" >&2
+        tail -n 30 "$LOG_FILE" >&2
+        die "dsh web responded but the boot failed ($fatal); see the log tail above"
+      fi
       say "dsh web is up: http://127.0.0.1:${WEB_PORT}"
       say "in the web IDE, open your VSCode forward to port ${WEB_PORT} (path prefix handled by the proxy)"
       return 0
     fi
+    # Fail fast when the launcher is already dead instead of polling the full
+    # window: the failure is in the log, show it immediately.
+    if ! kill -0 "$wrapper_pid" 2>/dev/null && ! pgrep -f 'apps/cli/src/bin.ts' >/dev/null 2>&1; then
+      break
+    fi
     sleep 1
   done
-  die "server did not come up within ${BOOT_WAIT_SECS}s — tail ${LOG_FILE}"
+
+  echo "--- ${LOG_FILE} (boot log tail) ---" >&2
+  tail -n 30 "$LOG_FILE" >&2
+  die "server did not come up within ${BOOT_WAIT_SECS}s — see the log tail above"
 }
 
 ensure_dsh_home
